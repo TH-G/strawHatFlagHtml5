@@ -1,0 +1,317 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>草帽旗（Box2d_Html5版）</title>
+</head>
+
+<body style="margin:0;">
+<canvas id="canvas" width="1200" height="800" style="background-color:#333333;" ></canvas>
+<script type="text/javascript" src="Box2dWeb-2.1.a.3.min.js"></script>
+<script type="text/javascript">
+	/**
+	 * ...
+	 * @author winterIce
+	 */
+	     var   b2Vec2 = Box2D.Common.Math.b2Vec2
+	        ,  b2CircleShape = Box2D.Collision.Shapes.b2CircleShape
+			,  b2DistanceJointDef = Box2D.Dynamics.Joints.b2DistanceJointDef
+			,  b2DistanceJoint = Box2D.Dynamics.Joints.b2DistanceJoint
+            ,  b2Shape = Box2D.Collision.Shapes.b2Shape
+			,  b2AABB = Box2D.Collision.b2AABB
+         	,	b2BodyDef = Box2D.Dynamics.b2BodyDef
+         	,	b2Body = Box2D.Dynamics.b2Body
+         	,	b2FixtureDef = Box2D.Dynamics.b2FixtureDef
+         	,	b2Fixture = Box2D.Dynamics.b2Fixture
+         	,	b2World = Box2D.Dynamics.b2World
+         	,	b2MassData = Box2D.Collision.Shapes.b2MassData
+         	,	b2DebugDraw = Box2D.Dynamics.b2DebugDraw
+            ,  b2MouseJointDef =  Box2D.Dynamics.Joints.b2MouseJointDef
+			,  b2MouseJoint = Box2D.Dynamics.Joints.b2MouseJoint
+            ;
+
+		var world,timeStep,iterations,pixelsPerMeter=30,mouseJoint,mousePVec;
+		var cellArr=[],vertices=[],indices=[],uvtData=[],debugDraw;
+		var imgLoader,opFlag;
+		var canvasPosition = getElementPosition(document.getElementById("canvas"));
+		var isMouseDown,mouseX,mouseY,selectedBody,picW,picH,pic=null,cx=0;cy=0;
+		var ctx=document.getElementById("canvas").getContext("2d");
+
+		createWorld();
+		//makeDebugDraw();
+		createJoint();
+		loadImg();
+		
+		
+		
+		document.addEventListener("mousedown", function(e) {
+            isMouseDown = true;
+            handleMouseMove(e);
+            document.addEventListener("mousemove", handleMouseMove, true);
+         }, true);
+         
+         document.addEventListener("mouseup", function() {
+            document.removeEventListener("mousemove", handleMouseMove, true);
+            isMouseDown = false;
+            mouseX = undefined;
+            mouseY = undefined;
+         }, true);
+         
+         function handleMouseMove(e) {
+            mouseX = (e.clientX - canvasPosition.x) / 30;
+            mouseY = (e.clientY - canvasPosition.y) / 30;
+         };
+         
+         function getBodyAtMouse() {
+            mousePVec = new b2Vec2(mouseX, mouseY);
+            var aabb = new b2AABB();
+            aabb.lowerBound.Set(mouseX - 0.001, mouseY - 0.001);
+            aabb.upperBound.Set(mouseX + 0.001, mouseY + 0.001);
+            selectedBody = null;
+            world.QueryAABB(getBodyCB, aabb);
+            return selectedBody;
+         }
+
+         function getBodyCB(fixture) {
+            if(fixture.GetBody().GetType() != b2Body.b2_staticBody) {
+               if(fixture.GetShape().TestPoint(fixture.GetBody().GetTransform(), mousePVec)) {
+				  var mat = fixture.GetBody().GetTransform().R;
+                  selectedBody = fixture.GetBody();
+                  return false;
+               }
+            }
+            return true;
+         }
+         
+         //update
+         
+         function update() {
+            if(isMouseDown && (!mouseJoint)) {
+               var body = getBodyAtMouse();
+               if(body) {
+                  var md = new b2MouseJointDef();
+                  md.bodyA = world.GetGroundBody();
+                  md.bodyB = body;
+                  md.target.Set(mouseX, mouseY);
+                  md.collideConnected = true;
+                  md.maxForce = 300.0 * body.GetMass();
+                  mouseJoint = world.CreateJoint(md);
+                  body.SetAwake(true);
+               }
+            }
+            
+            if(mouseJoint) {
+               if(isMouseDown) {
+                  mouseJoint.SetTarget(new b2Vec2(mouseX, mouseY));
+               } else {
+                  world.DestroyJoint(mouseJoint);
+                  mouseJoint = null;
+               }
+            }
+         
+            world.Step(1 / 60, 10, 10);
+            world.DrawDebugData();
+            world.ClearForces();
+			
+			if (pic) {
+				ctx.clearRect(0,0,canvas.width,canvas.height);
+				drawTriangles(getVertices(),getIndices(),getUvtData());
+			}
+         };
+         
+         //helpers
+         
+         //http://js-tut.aardon.de/js-tut/tutorial/position.html
+         function getElementPosition(element) {
+            var elem=element, tagname="", x=0, y=0;
+           
+            while((typeof(elem) == "object") && (typeof(elem.tagName) != "undefined")) {
+               y += elem.offsetTop;
+               x += elem.offsetLeft;
+               tagname = elem.tagName.toUpperCase();
+
+               if(tagname == "BODY")
+                  elem=0;
+
+               if(typeof(elem) == "object") {
+                  if(typeof(elem.offsetParent) == "object")
+                     elem = elem.offsetParent;
+               }
+            }
+
+            return {x: x, y: y};
+         }
+		
+		 window.setInterval(update, 1000 / 60);
+		
+		
+		function createWorld(){
+			var gravity = new b2Vec2(0.0,0.0);
+			var doSleep = true;
+			world = new b2World(gravity,doSleep);
+			world.SetWarmStarting(true);
+			timeStep = 1.0/30.0;
+			iterations = 10;
+		}
+ 
+		function makeDebugDraw(){
+			debugDraw = new b2DebugDraw();
+			debugDraw.SetSprite(document.getElementById("canvas").getContext("2d"));
+			debugDraw.SetDrawScale(30.0);
+			debugDraw.SetFillAlpha(0.5);
+			debugDraw.SetLineThickness(1.0);
+			debugDraw.SetFlags(b2DebugDraw.e_shapeBit | b2DebugDraw.e_jointBit);
+			world.SetDebugDraw(debugDraw);
+		}
+ 
+		function createJoint() {
+			var obj1,obj2;
+			for (var j = 0; j < 11; j++ ) {
+			    for (var i = 0; i < 5; i++ ) {
+				    var type = 1;
+				    if (i == 0) type = 0;//type=0为static,type=1为dynamic
+			        var x = 150+50*j;
+			        var y = 50+80*i;
+			        var r = 25;
+			        var cellP = cell(x,y,r,type);
+			        cellArr.push(cellP);
+				
+				    //和前一个关联
+					if ((i != 0 || j != 0)&&i!=0) {
+				        obj1 = cellP;
+					    obj2 = cellArr[cellArr.length - 2];
+					    createDistanceJoint(obj1, obj2);
+					}
+					//和上一列关联
+					if (j * 5 + i >= 5) {
+					    obj1 = cellP;
+					    obj2 = cellArr[cellArr.length - 6];
+					    createDistanceJoint(obj1, obj2);
+					}
+			    }//for
+			}//for	
+		}
+ 
+		function createDistanceJoint(obj1,obj2) {
+		    var jointDef = new b2DistanceJointDef();
+			jointDef.Initialize(obj1,obj2,obj1.GetWorldCenter(),obj2.GetWorldCenter());
+			jointDef.collideConnected = true;
+			jointDef.dampingRatio=0;//0--1
+			jointDef.frequencyHz=1;
+			world.CreateJoint(jointDef);
+		}
+		
+		function loadImg() {
+			var res=new Image();
+			res.src = "op_strawHat.jpg";
+	        res.onload=function(){
+				pic = res;
+				picW = res.width;
+                picH = res.height;
+			}
+		}
+		
+		
+		function getVertices() {
+			vertices = [];
+			for (var i = 0, len = cellArr.length; i < len; i++) {
+			    vertices.push(cellArr[i].GetPosition().x*pixelsPerMeter, cellArr[i].GetPosition().y*pixelsPerMeter);
+			}
+			return vertices;
+		}
+	    function getIndices() {
+			indices = [];
+			var t1, t2, t3, t4;
+			for (var i = 0; i < 10; i++ ) {
+				for (var j = 0; j < 4; j++ ) {
+					t1 = i * 5 + j;
+					t2 = t1 + 5;
+					t3 = t1 + 1;
+					t4 = t1 + 6;
+					indices.push(t1, t2, t3);
+					indices.push(t2, t3, t4);
+				}
+			}
+			return indices;
+		}
+		
+		function getUvtData() {
+			uvtData = [];
+			for (var i = 0; i <= 10; i++ ) {
+				for (var j = 0; j <= 4; j++ ) {
+				    uvtData.push(i * 0.1, j * 0.25);	
+				}
+			}
+			return uvtData;
+		}
+			    
+		function cell(x,y,r,type){
+		    var bodyDef = new b2BodyDef();
+			bodyDef.type = (type==0)?b2Body.b2_staticBody:b2Body.b2_dynamicBody;
+			bodyDef.position.Set(x/pixelsPerMeter,y/pixelsPerMeter);
+			var circleShape = new b2CircleShape();
+			circleShape.SetRadius(r/pixelsPerMeter);
+			var fixtureDef = new b2FixtureDef();
+			fixtureDef.shape = circleShape;
+			fixtureDef.density = 0.0;
+			fixtureDef.friction = 0.4;
+			fixtureDef.restitution = 0.3;
+			var circle = world.CreateBody(bodyDef);
+			circle.CreateFixture(fixtureDef);
+			return circle;
+		}
+
+
+//借鉴actionscript的drawTriangles
+function drawTriangles(v, ind, u ,tn,lco){
+		var i,l = ind.length;
+			for(i=0;i<l;i+=3){
+					ctx.save();
+					ctx.beginPath();
+					ctx.moveTo(v[ind[i]*2]+cx,v[ind[i]*2+1]+cy);
+					ctx.lineTo(v[ind[i+1]*2]+cx,v[ind[i+1]*2+1]+cy);
+					if(i % 6 == 0)ctx.lineTo(v[ind[i+5]*2]+cx,v[ind[i+5]*2+1]+cy);
+					ctx.lineTo(v[ind[i+2]*2]+cx,v[ind[i+2]*2+1]+cy);
+					ctx.lineTo(v[ind[i]*2]+cx,v[ind[i]*2+1]+cy);
+					ctx.closePath();
+					if(tn){
+						ctx.lineWidth = tn;
+						ctx.strokeStyle = lco;
+						ctx.stroke();
+					}
+					ctx.clip();
+				if(i%6==0){
+					var w = (u[ind[i+1]*2]-u[ind[i]*2])*picW;
+					var h = (u[ind[i+2]*2+1]-u[ind[i]*2+1])*picH;
+					var t1 = (v[ind[i+1]*2]-v[ind[i]*2])/w;
+					var t2 = (v[ind[i+1]*2+1]-v[ind[i]*2+1])/w;
+					var t3 = (v[ind[i+2]*2]-v[ind[i]*2])/h;
+					var t4 = (v[ind[i+2]*2+1]-v[ind[i]*2+1])/h;
+					ctx.setTransform(t1,t2,t3,t4, v[ind[i]*2]+cx, v[ind[i]*2+1]+cy);
+					ctx.drawImage(pic,
+								0+picW*u[ind[i]*2],
+								0+picH*u[ind[i]*2+1],
+								w,h,
+								0,0,
+								w,h);
+				}else{
+					var w = (u[ind[i+2]*2]-u[ind[i+1]*2])*picW;
+					var h = (u[ind[i+2]*2+1]-u[ind[i]*2+1])*picH;
+					var t1 = (v[ind[i+2]*2]-v[ind[i+1]*2])/w;
+					var t2 = (v[ind[i+2]*2+1]-v[ind[i+1]*2+1])/w;
+					var t3 = (v[ind[i+2]*2]-v[ind[i]*2])/h;
+					var t4 = (v[ind[i+2]*2+1]-v[ind[i]*2+1])/h;
+					ctx.setTransform(t1,t2,t3,t4, v[ind[i+1]*2]+cx, v[ind[i+1]*2+1]+cy);
+					ctx.drawImage(pic,
+							0+picW*u[ind[i+1]*2],
+							0+picH*u[ind[i]*2+1],
+							w,h,
+							0,-h,
+							w,h);
+				}
+				ctx.restore();
+			}//for
+}
+</script>
+</body>
+</html>
